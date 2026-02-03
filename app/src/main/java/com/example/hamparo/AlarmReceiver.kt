@@ -1,42 +1,37 @@
-package com.example.hamparo.utils
+package com.example.hamparo
 
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationCompat
-import com.example.hamparo.MainActivity
-import com.example.hamparo.R
+import android.util.Log
+import com.example.hamparo.ui.utils.NotificationHelper
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class AlarmReceiver : BroadcastReceiver() {
+
+    // Inyectamos el "experto en ruido" que ya usamos para el SOS
+    @Inject
+    lateinit var notificationHelper: NotificationHelper
+
     override fun onReceive(context: Context, intent: Intent) {
-        // Recogemos el nombre de la medicina que nos pasan
-        val nombreMedicina = intent.getStringExtra("NOMBRE_MEDICINA") ?: "Medicina"
+        try {
+            // 1. Recogemos los datos que nos manda el programador
+            val nombreMedicina = intent.getStringExtra("NOMBRE_MEDICINA") ?: "Medicina"
+            val mensajeExtra = intent.getStringExtra("MENSAJE")
 
-        // Creamos la notificación
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val tituloNotificacion = "💊 ¡HORA DE TU MEDICINA!"
+            val cuerpoNotificacion = mensajeExtra ?: "Te toca tomar: $nombreMedicina"
 
-        // Intent para abrir la App al tocar la notificación
-        val tapIntent = Intent(context, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            tapIntent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
+            Log.d("Hamparo", "⏰ ¡ALARMA DISPARADA! -> $nombreMedicina")
 
-        // Diseño de la Notificación 🔔
-        val notificacion = NotificationCompat.Builder(context, "canal_medicinas")
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Asegúrate de tener un icono aquí
-            .setContentTitle("💊 HORA DE TU MEDICINA")
-            .setContentText("Te toca tomar: $nombreMedicina")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
 
-        // ¡Lanzamos la notificación!
-        notificationManager.notify(nombreMedicina.hashCode(), notificacion)
+            notificationHelper.mostrarNotificacion(tituloNotificacion, cuerpoNotificacion)
+
+        } catch (e: Exception) {
+            Log.e("Hamparo", "Error al procesar la alarma: ${e.message}")
+            e.printStackTrace()
+        }
     }
 }

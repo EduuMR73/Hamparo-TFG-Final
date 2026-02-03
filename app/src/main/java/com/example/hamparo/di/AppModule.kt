@@ -3,34 +3,36 @@ package com.example.hamparo.di
 import android.content.Context
 import androidx.room.Room
 import com.example.hamparo.data.local.HamparoDatabase
-import com.example.hamparo.data.local.dao.MedicamentoDao // <--- IMPORT NUEVO
+import com.example.hamparo.data.local.dao.MedicamentoDao
 import com.example.hamparo.data.local.dao.MedicionDao
 import com.example.hamparo.data.local.dao.UsuarioDao
+import com.example.hamparo.data.network.NotificationAPI
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
 
 @Module
-@InstallIn(SingletonComponent::class) // Este módulo vivirá tanto como la app
+@InstallIn(SingletonComponent::class)
 object AppModule {
 
-    // 1. Proveemos la Base de Datos
+    // 1. BASE DE DATOS (ROOM)
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): HamparoDatabase {
         return Room.databaseBuilder(
             context,
             HamparoDatabase::class.java,
-            "hamparo_database" // Nombre del archivo físico de la BD
+            "hamparo_database"
         )
-            .fallbackToDestructiveMigration() // Si cambiamos la BD, borra la anterior (útil en desarrollo)
+            .fallbackToDestructiveMigration()
             .build()
     }
-
-    // 2. Proveemos los DAOs individualmente (Así el Repositorio no necesita saber de la BD entera)
 
     @Provides
     fun provideUsuarioDao(db: HamparoDatabase): UsuarioDao = db.usuarioDao()
@@ -38,9 +40,20 @@ object AppModule {
     @Provides
     fun provideMedicionDao(db: HamparoDatabase): MedicionDao = db.medicionDao()
 
-    // --- NUEVO: Proveedor para el DAO de Medicamentos ---
     @Provides
-    fun provideMedicamentoDao(db: HamparoDatabase): MedicamentoDao {
-        return db.medicamentoDao()
+    fun provideMedicamentoDao(db: HamparoDatabase): MedicamentoDao = db.medicamentoDao()
+
+
+    // 2. RED (RETROFIT / NOTIFICACIONES)
+
+    @Provides
+    @Singleton
+    fun provideNotificationAPI(): NotificationAPI {
+        return Retrofit.Builder()
+            .baseUrl("https://fcm.googleapis.com/")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(NotificationAPI::class.java)
     }
+
 }

@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.example.hamparo.data.local.dao.MedicionDao
 import com.example.hamparo.data.local.dao.UsuarioDao
-import com.example.hamparo.data.local.dao.MedicamentoDao // <--- NUEVO IMPORT
+import com.example.hamparo.data.local.dao.MedicamentoDao
 import com.example.hamparo.data.local.entities.MedicamentoEntity
 import com.example.hamparo.data.local.entities.MedicionEntity
 import com.example.hamparo.data.local.entities.UsuarioEntity
@@ -20,5 +20,5 @@ abstract class HamparoDatabase : RoomDatabase() {
 
     abstract fun usuarioDao(): UsuarioDao
     abstract fun medicionDao(): MedicionDao
-    abstract fun medicamentoDao(): MedicamentoDao // <--- DESCOMENTADO
+    abstract fun medicamentoDao(): MedicamentoDao
 }

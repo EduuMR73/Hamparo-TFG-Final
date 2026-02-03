@@ -17,4 +17,5 @@ plugins {
     // Plugin KSP (Kotlin Symbol Processing)
     // Esta versión específica (1.9.20-1.0.14) requiere obligatoriamente Kotlin 1.9.20
     id("com.google.devtools.ksp") version "1.9.20-1.0.14" apply false
+    alias(libs.plugins.google.gms.google.services) apply false
 }

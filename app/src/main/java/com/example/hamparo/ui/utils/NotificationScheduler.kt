@@ -1,36 +1,80 @@
-package com.example.hamparo.utils
+package com.example.hamparo.ui.utils
 
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.util.Log
+import com.example.hamparo.AlarmReceiver
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 
-// Función para programar una alarma que se repite
-fun programarAlarma(context: Context, nombreMedicina: String, horasFrecuencia: Int) {
-    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+class NotificationScheduler @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
-    val intent = Intent(context, AlarmReceiver::class.java).apply {
-        putExtra("NOMBRE_MEDICINA", nombreMedicina)
+    // Función para programar la alarma de medicina
+    fun programarAlarmaMedicina(nombreMedicina: String, tiempoMilis: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        // Intent que apunta a tu AlarmReceiver
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            putExtra("TITULO", "¡Hora de tu medicina!")
+            putExtra("MENSAJE", "Te toca tomar: $nombreMedicina")
+            putExtra("NOMBRE_MEDICINA", nombreMedicina)
+        }
+
+        // PendingIntent único para esta medicina
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            nombreMedicina.hashCode(), // Usamos el hash del nombre como ID único
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        // Calculamos el momento exacto en el futuro (Ahora + tiempoMilis)
+        val triggerTime = System.currentTimeMillis() + tiempoMilis
+
+        try {
+            // Lógica para diferentes versiones de Android (Doze Mode)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                } else {
+                    // Si no tenemos permiso exacto, usamos el normal
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            }
+            Log.d("Hamparo", "Alarma programada para $nombreMedicina en ${tiempoMilis/1000}s")
+        } catch (e: SecurityException) {
+            Log.e("Hamparo", "Error de seguridad (permiso de alarmas): ${e.message}")
+        }
     }
 
-    // Usamos el hashCode del nombre como ID único para no sobreescribir otras medicinas
-    val pendingIntent = PendingIntent.getBroadcast(
-        context,
-        nombreMedicina.hashCode(),
-        intent,
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-    )
+    // Función para cancelar una alarma específica
+    fun cancelarAlarma(nombreMedicina: String) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, AlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                nombreMedicina.hashCode(),
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE
+            )
 
-    // Calculamos cuándo debe sonar la primera vez (Ej: Ahora + X horas)
-    // Para probarlo rápido, puedes cambiar 'horasFrecuencia * 3600000L' por '10000L' (10 segundos)
-    val tiempoEspera = horasFrecuencia * 60 * 60 * 1000L
-    val triggerTime = System.currentTimeMillis() + tiempoEspera
-
-    // Programamos la alarma repetitiva
-    alarmManager.setRepeating(
-        AlarmManager.RTC_WAKEUP, // Despierta al móvil si duerme
-        triggerTime,
-        tiempoEspera, // Se repite cada X horas
-        pendingIntent
-    )
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+                Log.d("Hamparo", "Alarma cancelada para: $nombreMedicina")
+            }
+        } catch (e: Exception) {
+            Log.e("Hamparo", "Error al cancelar alarma: ${e.message}")
+        }
+    }
 }

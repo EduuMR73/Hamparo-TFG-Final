@@ -23,8 +23,8 @@ interface MedicamentoDao {
     @Delete
     suspend fun deleteMedicamento(medicamento: MedicamentoEntity)
 
-    // 👇 AÑADIDO: Resta 1 al stock directamente
-    // Esta consulta es inteligente: solo resta si el stock es mayor que 0.
+
+    // Solo resta si el stock es mayor que 0.
     // Así evitamos tener "-1 pastillas".
     @Query("UPDATE medicamentos SET stock = stock - 1 WHERE id = :id AND stock > 0")
     suspend fun bajarStock(id: Int)

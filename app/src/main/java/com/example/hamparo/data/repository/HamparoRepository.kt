@@ -24,7 +24,6 @@ class HamparoRepository @Inject constructor(
         medicionDao.insertMedicion(medicion)
     }
 
-    // Devuelve todas las mediciones para hacer GRÁFICOS (RA5)
     fun obtenerHistorial(usuarioId: Int) = medicionDao.getHistorialCompleto(usuarioId)
 
     // --- FUNCIONES DE MEDICAMENTOS (Inventario) ---
@@ -50,7 +49,6 @@ class HamparoRepository @Inject constructor(
         medicamentoDao.deleteMedicamento(medicina)
     }
 
-    // 4. Función para restar stock (NUEVA) 👇
     // Llama a la consulta SQL optimizada del DAO
     suspend fun restarStock(idMedicina: Int) {
         medicamentoDao.bajarStock(idMedicina)

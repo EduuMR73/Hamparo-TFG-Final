@@ -15,7 +15,7 @@ interface UsuarioDao {
     suspend fun insertUsuario(usuario: UsuarioEntity)
 
     // Obtener todos los usuarios. Devuelve un "Flow".
-    // "Flow" notifica a la UI automáticamente si hay cambios (Reactividad = Puntos extra RA1.g)
+    // "Flow" notifica a la UI automáticamente si hay cambios
     @Query("SELECT * FROM usuarios")
     fun getAllUsuarios(): Flow<List<UsuarioEntity>>
 

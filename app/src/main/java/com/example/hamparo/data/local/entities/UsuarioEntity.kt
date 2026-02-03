@@ -13,11 +13,11 @@ data class UsuarioEntity(
     val nombre: String,
 
     @ColumnInfo(name = "rol_usuario")
-    val rol: UserRole, // Usamos el Enum que creamos arriba
+    val rol: UserRole,
 
     @ColumnInfo(name = "edad")
-    val edad: Int, // Útil para justificar "informes demográficos" si hiciera falta
+    val edad: Int,
 
     @ColumnInfo(name = "foto_uri")
-    val fotoUri: String? = null // Para la foto de perfil (RA1.d Personalización)
+    val fotoUri: String? = null // Para la foto de perfil
 )

@@ -11,5 +11,5 @@ enum class MedicionType {
     PULSO,
     PESO,
     OXIGENO,
-    ALERTA  // <--- ¡NUEVO! Registraremos las llamadas de auxilio aquí
+    ALERTA
 }

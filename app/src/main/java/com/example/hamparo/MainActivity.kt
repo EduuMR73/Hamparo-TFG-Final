@@ -1,33 +1,55 @@
 package com.example.hamparo
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.os.Build
 import android.os.Bundle
-// CAMBIO IMPORTANTE: Cambio ComponentActivity por FragmentActivity
-import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.navigation.compose.rememberNavController
+import com.example.hamparo.ui.navigation.AppNavigation
 import com.example.hamparo.ui.navigation.AppScreens
-import com.example.hamparo.ui.screen.login.LoginScreen
-import com.example.hamparo.ui.screen.patient.PatientHomeScreen
-import com.example.hamparo.ui.screens.admin.AdminHomeScreen
 import com.example.hamparo.ui.theme.HamparoTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 
 @AndroidEntryPoint
-// AHORA HEREDO DE FragmentActivity (Necesario para huella y diálogos antiguos)
 class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // 👇👇👇 AÑADIDO: CREAMOS EL CANAL AL INICIAR LA APP 👇👇👇
-        crearCanalNotificaciones()
+        crearCanalesNotificaciones()
+        solicitarPermisosNotificacion()
 
         setContent {
             HamparoTheme {
@@ -35,50 +57,117 @@ class MainActivity : FragmentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Configuro el controlador de navegación central
                     val navController = rememberNavController()
 
-                    NavHost(
-                        navController = navController,
-                        startDestination = AppScreens.Login.route
-                    ) {
-                        // Pantalla 1: Login
-                        composable(route = AppScreens.Login.route) {
-                            LoginScreen(navController)
+                    // --- ESTADOS PARA CONTROLAR EL SPLASH SCREEN ---
+                    var showSplash by remember { mutableStateOf(true) }
+                    var startDestination by remember { mutableStateOf(AppScreens.Welcome.route) }
+
+                    // --- LÓGICA DE DECISIÓN (Se ejecuta 1 sola vez al abrir la app) ---
+                    LaunchedEffect(key1 = true) {
+                        val prefs = getSharedPreferences("HamparoPrefs", Context.MODE_PRIVATE)
+                        val isLoggedIn = prefs.getBoolean("IS_LOGGED_IN", false)
+                        val rol = prefs.getString("ROL", null)
+                        val pacienteId = prefs.getString("PACIENTE_ID", "")
+
+                        // Decidimos la ruta basándonos en los datos guardados
+                        startDestination = if (isLoggedIn && rol != null) {
+                            when (rol) {
+                                "CUIDADOR" -> AppScreens.AdminHome.route
+                                "FAMILIAR" -> {
+                                    if (!pacienteId.isNullOrEmpty()) "dashboard_screen/$pacienteId"
+                                    else AppScreens.Welcome.route
+                                }
+                                "PACIENTE" -> "patient_graph"
+                                else -> AppScreens.Welcome.route
+                            }
+                        } else {
+                            AppScreens.Welcome.route
                         }
 
-                        // Pantalla 2: Home del Paciente
-                        composable(route = AppScreens.PatientHome.route) {
-                            PatientHomeScreen(navController)
-                        }
+                        // Pequeña pausa (1.5 seg) para que se vea el logo y no dé un "flash" feo
+                        delay(1500)
+                        showSplash = false
+                    }
 
-                        // Pantalla 3: Home del Admin
-                        composable(route = AppScreens.AdminHome.route) {
-                            AdminHomeScreen(navController)
-                        }
+                    // --- INTERCAMBIO DE PANTALLAS ---
+                    if (showSplash) {
+                        SplashScreen() // Muestra esto mientras carga
+                    } else {
+                        // Cuando termina de cargar, lanza la navegación con la ruta YA DECIDIDA
+                        AppNavigation(navController = navController, startDestination = startDestination)
                     }
                 }
             }
         }
     }
 
-    // --- FUNCIÓN AUXILIAR PARA CONFIGURAR EL CANAL DE NOTIFICACIONES ---
-    private fun crearCanalNotificaciones() {
-        // Solo necesario en Android 8.0 (Oreo) o superior
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val name = "Recordatorios de Medicinas"
-            val descriptionText = "Canal para avisos de pastillas"
-            val importance = android.app.NotificationManager.IMPORTANCE_HIGH // ¡IMPORTANTE! Para que suene fuerte
+    // --- DISEÑO DE LA PANTALLA DE CARGA (SPLASH) ---
+    @Composable
+    fun SplashScreen() {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.primary), // Color corporativo de fondo
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
-            // ID del canal: "canal_medicinas" (Debe coincidir con el AlarmReceiver)
-            val channel = android.app.NotificationChannel("canal_medicinas", name, importance).apply {
-                description = descriptionText
+                Text(
+                    text = "HAMPARO",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Indicador de carga
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+        }
+    }
+
+    private fun solicitarPermisosNotificacion() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+    }
+
+    private fun crearCanalesNotificaciones() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            if (notificationManager.getNotificationChannel("canal_medicinas") == null) {
+                val channel = NotificationChannel("canal_medicinas", "Recordatorios Medicinas", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Avisos para tomar medicación"
+                    enableVibration(true)
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                    setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), audioAttributes)
+                }
+                notificationManager.createNotificationChannel(channel)
             }
 
-            // Registramos el canal en el sistema
-            val notificationManager: android.app.NotificationManager =
-                getSystemService(android.app.NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
+            if (notificationManager.getNotificationChannel("canal_alertas_urgentes") == null) {
+                val channelUrgente = NotificationChannel("canal_alertas_urgentes", "Alertas SOS", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Alertas de emergencia"
+                    enableVibration(true)
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                    setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), audioAttributes)
+                }
+                notificationManager.createNotificationChannel(channelUrgente)
+            }
         }
     }
 }

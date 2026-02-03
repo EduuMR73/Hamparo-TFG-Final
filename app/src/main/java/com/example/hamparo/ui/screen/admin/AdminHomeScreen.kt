@@ -1,40 +1,43 @@
-package com.example.hamparo.ui.screens.admin
+package com.example.hamparo.ui.screen.admin
 
-import android.widget.Toast // <--- IMPORTANTE PARA EL CHIVATO (DEBUG)
+import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.MonitorHeart
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.example.hamparo.data.local.entities.MedicamentoEntity
-import com.example.hamparo.data.local.entities.MedicionEntity
-import com.example.hamparo.data.local.entities.MedicionType
-import com.example.hamparo.ui.components.HealthChart
-import com.example.hamparo.ui.screen.admin.AdminViewModel
+import com.example.hamparo.ui.components.MedicineCard
+import com.example.hamparo.ui.navigation.AppScreens
+import com.google.gson.Gson
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,329 +45,310 @@ fun AdminHomeScreen(
     navController: NavController,
     viewModel: AdminViewModel = hiltViewModel()
 ) {
-    val historial by viewModel.historial.collectAsState(initial = emptyList())
-    val inventario by viewModel.inventario.collectAsState(initial = emptyList())
+    // ESTADOS DEL VIEWMODEL
+    val nombreGrupo by viewModel.nombreGrupo.collectAsState()
+    val codigoAcceso by viewModel.codigoAcceso.collectAsState()
 
-    var showDialog by remember { mutableStateOf(false) }
-    var selectedMedicine by remember { mutableStateOf<MedicamentoEntity?>(null) }
+    val medicamentoEscaneado by viewModel.medicamentoEscaneado.collectAsState()
+    val showScanDialog by viewModel.showScanDialog.collectAsState()
+    val candidatos by viewModel.candidatosManuales.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Panel del Cuidador") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
-                )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    selectedMedicine = null
-                    showDialog = true
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Añadir")
-            }
+    // 1. GESTIÓN DE VISTAS
+    VistaDashboardCompleto(navController, viewModel, nombreGrupo, codigoAcceso)
+
+    if (showScanDialog && medicamentoEscaneado != null) {
+
+        var nombreManual by remember { mutableStateOf("") }
+        var dosisManual by remember { mutableStateOf("") }
+
+        LaunchedEffect(medicamentoEscaneado) {
+            nombreManual = medicamentoEscaneado!!.nombre
+            dosisManual = medicamentoEscaneado!!.dosis
         }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. RESUMEN
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Resumen del Paciente", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = "${historial.size} registros / ${inventario.size} medicinas",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold
+
+        AlertDialog(
+            onDismissRequest = {
+                viewModel.cerrarDialogoScanner()
+            },
+            title = {
+                Text(if (medicamentoEscaneado!!.tipo == "Nuevo") "Vincular Medicamento" else "Confirmar Datos")
+            },
+            text = {
+                Column {
+                    if (medicamentoEscaneado!!.tipo == "Nuevo") {
+                        Text("El código no se reconoció. Búscalo por nombre para obtener el prospecto oficial.", fontSize = 12.sp, color = Color.Gray)
+                        Spacer(Modifier.height(16.dp))
+
+                        OutlinedTextField(
+                            value = nombreManual,
+                            onValueChange = {
+                                nombreManual = it
+                                viewModel.buscarFarmacoManual(it)
+                            },
+                            label = { Text("Nombre del medicamento") },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = { Icon(Icons.Default.Search, null) },
+                            singleLine = true
+                        )
+
+                        if (candidatos.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp).padding(vertical = 4.dp),
+                                elevation = CardDefaults.cardElevation(4.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White)
+                            ) {
+                                LazyColumn {
+                                    items(candidatos) { item ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { viewModel.seleccionarFarmacoManual(item) }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.MedicalServices, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(item.nombre, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                        }
+                                        HorizontalDivider(color = Color.LightGray, thickness = 0.5.dp)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = dosisManual,
+                            onValueChange = { dosisManual = it },
+                            label = { Text("Dosis (ej: 1 Pastilla)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    } else {
+                        MedicineCard(
+                            info = medicamentoEscaneado!!,
+                            onDownloadPdf = null
                         )
                     }
                 }
-            }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val nombreFinal = if(medicamentoEscaneado!!.tipo == "Nuevo") nombreManual else medicamentoEscaneado!!.nombre
+                    val dosisFinal = if(medicamentoEscaneado!!.tipo == "Nuevo") dosisManual else medicamentoEscaneado!!.dosis
 
-            // 2. INVENTARIO
-            item {
-                Text("💊 Inventario Farmacia", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            }
-
-            if (inventario.isEmpty()) {
-                item { Text("No hay medicinas. Pulsa + para añadir.", style = MaterialTheme.typography.bodyMedium) }
-            } else {
-                items(inventario) { medicina ->
-                    MedicamentoItem(
-                        medicina = medicina,
-                        onClick = {
-                            selectedMedicine = medicina
-                            showDialog = true
-                        }
-                    )
-                }
-            }
-
-            // 3. GRÁFICA
-            if (historial.isNotEmpty()) {
-                item {
-                    Text("📈 Evolución", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(2.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        HealthChart(data = historial)
+                    if (nombreFinal.isNotBlank()) {
+                        viewModel.agregarPautaMedica(
+                            nombre = nombreFinal,
+                            dosis = dosisFinal,
+                            tipoFrecuencia = com.example.hamparo.data.model.TipoFrecuencia.RUTINA,
+                            indicacion = "Escaneado",
+                            tomas = emptyList()
+                        )
+                        viewModel.cerrarDialogoScanner()
+                        viewModel.limpiarBusquedaManual()
                     }
+                }) {
+                    Text(if (medicamentoEscaneado!!.tipo == "Nuevo") "GUARDAR MANUAL" else "CONFIRMAR")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.cerrarDialogoScanner()
+                    viewModel.limpiarBusquedaManual()
+                }) {
+                    Text("Cancelar")
                 }
             }
-
-            // 4. HISTORIAL
-            item {
-                Text("📋 Historial Salud", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            }
-
-            items(historial) { medicion ->
-                if (medicion.tipo == MedicionType.ALERTA) {
-                    // TARJETA DE ALERTA ROJA 🚨
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFCDD2)),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        elevation = CardDefaults.cardElevation(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Alerta",
-                                tint = Color(0xFFD32F2F),
-                                modifier = Modifier.size(40.dp)
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text(
-                                    text = "¡S.O.S! PEDIDO DE AYUDA",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFFB71C1C)
-                                )
-                                Text(
-                                    text = "El paciente ha activado el aviso.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Black
-                                )
-                                val fecha = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(medicion.timestamp))
-                                Text(
-                                    text = "Recibido a las: $fecha",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.DarkGray
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    MedicionItem(medicion)
-                }
-            }
-        }
-
-        if (showDialog) {
-            AddMedicineDialog(
-                medicinaAEditar = selectedMedicine,
-                onDismiss = { showDialog = false },
-                onConfirm = { name, dose, freq, stock ->
-                    val id = selectedMedicine?.id ?: 0
-                    viewModel.guardarNuevaMedicina(name, dose, freq, stock, id)
-                    showDialog = false
-                },
-                onDelete = {
-                    selectedMedicine?.let { viewModel.borrarMedicina(it) }
-                    showDialog = false
-                }
-            )
-        }
+        )
     }
 }
 
-// --- COMPONENTES AUXILIARES ---
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MedicamentoItem(medicina: MedicamentoEntity, onClick: () -> Unit) {
-    Card(
-        elevation = CardDefaults.cardElevation(2.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = if (medicina.stock < 5) Color.Red else MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(50.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "${medicina.stock}",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = if (medicina.stock < 5) Color.White else Color.Black
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(text = medicina.nombre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(text = "${medicina.dosis} • Cada ${medicina.frecuenciaHoras}h", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-            }
-        }
-    }
-}
-
-@Composable
-fun MedicionItem(medicion: MedicionEntity) {
-    Card(
-        elevation = CardDefaults.cardElevation(2.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.MonitorHeart, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(text = medicion.tipo.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                val fecha = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(medicion.timestamp))
-                Text(text = fecha, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            val unidad = if (medicion.tipo == MedicionType.OXIGENO) "%" else " ppm"
-            Text(text = "${medicion.valor1.toInt()}$unidad", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        }
-    }
-}
-
-// 👇👇👇 DIÁLOGO MEJORADO CON ESCÁNER Y DEBUG 👇👇👇
-@Composable
-fun AddMedicineDialog(
-    medicinaAEditar: MedicamentoEntity?,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String, String, String) -> Unit,
-    onDelete: () -> Unit
+fun VistaDashboardCompleto(
+    navController: NavController,
+    viewModel: AdminViewModel,
+    nombreGrupo: String?,
+    codigoAcceso: String?
 ) {
-    var name by remember { mutableStateOf(medicinaAEditar?.nombre ?: "") }
-    var dose by remember { mutableStateOf(medicinaAEditar?.dosis ?: "") }
-    var frequency by remember { mutableStateOf(medicinaAEditar?.frecuenciaHoras?.toString() ?: "8") }
-    var stock by remember { mutableStateOf(medicinaAEditar?.stock?.toString() ?: "20") }
-
-    val esEdicion = medicinaAEditar != null
+    val listaPacientes by viewModel.listaPacientes.collectAsState()
+    val mensaje by viewModel.mensaje.collectAsState()
+    val emailAdmin by viewModel.emailAdminGrupo.collectAsState()
     val context = LocalContext.current
 
-    // CONFIGURACIÓN DEL ESCÁNER (ZXing)
-    val scanLauncher = rememberLauncherForActivityResult(
-        contract = ScanContract()
-    ) { result ->
-        if (result.contents != null) {
-            val codigo = result.contents
+    var mostrarDialogoNuevo by rememberSaveable { mutableStateOf(false) }
+    var nuevoNombre by rememberSaveable { mutableStateOf("") }
+    var nuevaUbicacion by rememberSaveable { mutableStateOf("") }
 
-            // 1. Buscamos el nombre en nuestra "Base de Datos"
-            name = buscarMedicamentoEnBaseDeDatos(codigo)
-
-            // 2. 🕵️ DEBUG: Te muestra el código leído en pantalla
-            Toast.makeText(context, "Código leído: $codigo", Toast.LENGTH_LONG).show()
+    // Permisos y Escáner
+    val launcherPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                launcherPermiso.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(if (esEdicion) "Editar Medicina" else "Nueva Medicina")
-                if (esEdicion) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = Color.Red)
-                    }
+    val scannerLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            viewModel.procesarCodigoEscaneado(result.contents)
+        }
+    }
+
+    LaunchedEffect(mensaje) {
+        if (mensaje != null) {
+            Toast.makeText(context, mensaje, Toast.LENGTH_SHORT).show()
+            viewModel.limpiarMensaje()
+        }
+    }
+
+    // Diálogo nuevo paciente
+    if (mostrarDialogoNuevo) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoNuevo = false },
+            title = { Text("Nuevo Ingreso") },
+            text = {
+                Column {
+                    Text("Se asignará un ID (NHC) automáticamente.", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(value = nuevoNombre, onValueChange = { nuevoNombre = it }, label = { Text("Nombre y Apellidos") }, singleLine = true)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(value = nuevaUbicacion, onValueChange = { nuevaUbicacion = it }, label = { Text("Ubicación (Opcional)") }, singleLine = true)
                 }
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.añadirPacienteProfesional(nuevoNombre, nuevaUbicacion)
+                    mostrarDialogoNuevo = false
+                    nuevoNombre = ""
+                    nuevaUbicacion = ""
+                }) { Text("GENERAR FICHA") }
+            },
+            dismissButton = { TextButton(onClick = { mostrarDialogoNuevo = false }) { Text("Cancelar") } }
+        )
+    }
 
-                // --- CAMPO NOMBRE ---
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("Nombre / Código") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+    // ESTRUCTURA PRINCIPAL (SCAFFOLD)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(nombreGrupo ?: "Mi Unidad", maxLines = 1) },
+                actions = {
+                    // Botón Diccionario
+                    IconButton(onClick = {
+                        navController.navigate(AppScreens.DrugsDictionary.route)
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "Diccionario", tint = MaterialTheme.colorScheme.primary)
+                    }
 
-                    // Botón para Escanear
-                    FilledIconButton(
-                        onClick = {
-                            val options = ScanOptions()
-                            options.setDesiredBarcodeFormats(ScanOptions.ALL_CODE_TYPES)
-                            options.setPrompt("Escanea el medicamento")
-                            options.setBeepEnabled(true)
-                            options.setOrientationLocked(false)
-                            scanLauncher.launch(options)
-                        },
-                        modifier = Modifier.size(56.dp),
-                        shape = MaterialTheme.shapes.small
-                    ) {
+                    // Botón Escáner
+                    IconButton(onClick = {
+                        val options = ScanOptions()
+                        options.setPrompt("Enfoca el código de barras")
+                        options.setBeepEnabled(true)
+                        options.setOrientationLocked(false)
+                        scannerLauncher.launch(options)
+                    }) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear")
                     }
+
+                    // Botón Salir
+                    IconButton(onClick = {
+                        viewModel.cerrarSesion()
+                        navController.navigate(AppScreens.Login.route) { popUpTo(0) }
+                    }) { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Cerrar Sesión") }
                 }
-
-                OutlinedTextField(value = dose, onValueChange = { dose = it }, label = { Text("Dosis") }, singleLine = true)
-                OutlinedTextField(value = frequency, onValueChange = { frequency = it }, label = { Text("Cada (Horas)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                OutlinedTextField(value = stock, onValueChange = { stock = it }, label = { Text("Stock") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            }
+            )
         },
-        confirmButton = {
-            Button(onClick = { if (name.isNotEmpty()) onConfirm(name, dose, frequency, stock) }) {
-                Text(if (esEdicion) "Actualizar" else "Guardar")
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { mostrarDialogoNuevo = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Default.PersonAdd, null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("NUEVO INGRESO")
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
-}
+        }
+    ) { p ->
+        Column(modifier = Modifier.padding(p).padding(16.dp)) {
 
-// 🧠 BASE DE DATOS SIMULADA INTELIGENTE 🧠
-fun buscarMedicamentoEnBaseDeDatos(codigo: String): String {
-    return when {
-        // --- TUS MEDICINAS REALES (Por Foto) ---
-        // Paracetamol Kern Pharma 1g (Contiene 658257 en el CN)
-        codigo.contains("658257") -> "Paracetamol Kern 1g"
+            // Tarjeta Código de Grupo
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer), modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("CÓDIGO DE UNIDAD", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = codigoAcceso ?: "...", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                    }
+                    IconButton(onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Código", codigoAcceso))
+                        Toast.makeText(context, "Copiado", Toast.LENGTH_SHORT).show()
+                    }) { Icon(Icons.Default.ContentCopy, null) }
+                }
+            }
 
-        // --- CÓDIGOS DATAMATRIX (Genéricos) ---
-        codigo.contains("664627") || codigo.contains("847000153028") -> "Nolotil 575mg"
-        codigo.contains("693827") || codigo.contains("847000693827") -> "Ibuprofeno 600mg"
-        codigo.contains("882313") -> "Sintrom 4mg"
-        codigo.contains("445566") -> "Adiro 100mg"
+            if (emailAdmin != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(Color(0xFFE3F2FD), RoundedCornerShape(8.dp)).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Link, null, tint = Color(0xFF1976D2))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("UNIDAD VINCULADA A:", style = MaterialTheme.typography.labelSmall, color = Color(0xFF1976D2), fontWeight = FontWeight.Bold)
+                        Text(emailAdmin ?: "", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
 
-        // --- CÓDIGOS DE BARRAS CLÁSICOS ---
-        codigo == "847000123456" -> "Paracetamol 1g (Demo)"
-        codigo == "843000654321" -> "Ibuprofeno 600mg (Demo)"
-
-        // --- NO ENCONTRADO ---
-        else -> codigo // Devuelve el número para que puedas copiarlo
+            // LISTA DE PACIENTES
+            LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listaPacientes) { paciente ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                // NAVEGACIÓN DIRECTA AL DETALLE DEL PACIENTE
+                                val json = Uri.encode(Gson().toJson(paciente))
+                                val emailSafe = emailAdmin ?: "unknown"
+                                navController.navigate("patient_detail/$json/$emailSafe")
+                            },
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(2.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(width = 50.dp, height = 40.dp)) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(text = paciente.nhc.take(4).ifEmpty { "?" }, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = "${paciente.nombre} ${paciente.apellidos}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (paciente.habitacion.isNotEmpty()) "📍 ${paciente.habitacion}" else "Sin ubicación definida",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                            Icon(Icons.Default.ChevronRight, null, tint = Color.LightGray)
+                        }
+                    }
+                }
+                // Padding final para el FAB
+                item { Spacer(Modifier.height(80.dp)) }
+            }
+        }
     }
 }

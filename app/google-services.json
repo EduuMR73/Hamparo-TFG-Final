@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "63569013982",
+    "project_id": "hamparo-app",
+    "storage_bucket": "hamparo-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:63569013982:android:20549c46944203abeae64f",
+        "android_client_info": {
+          "package_name": "com.example.hamparo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBWptqwkqu0rpumgywJZ0wxzwcWc4xKbPE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
