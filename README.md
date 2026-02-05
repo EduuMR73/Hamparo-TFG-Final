@@ -25,7 +25,8 @@ Se han grabado vídeos explicativos mostrando el uso real de la aplicación seg�
 ### Contenido de los vídeos:
 - **Pacientes:** Uso de la aplicación por parte del paciente.
 - **CuidadoresFamiliares:** Gestión y seguimiento por cuidadores y familiares.
-- **Medicacion 3:** Proceso de toma de medicación y notificaciones.
+- **Medicacion:** Proceso de toma de medicación y notificaciones.
+- **Huella:** Proceso de escaneo de huella.
 
 ---
 
