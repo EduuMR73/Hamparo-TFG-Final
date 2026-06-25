@@ -1,4 +1,4 @@
-# Hamparo – TFG DAM
+# Hamparo 
 
 Aplicación Android desarrollada como Trabajo para la asignatura de Desarrollo de Interfaces (DAM), orientada al cuidado, seguimiento y asistencia de personas dependientes, facilitando la comunicación entre pacientes, cuidadores y familiares.
 
